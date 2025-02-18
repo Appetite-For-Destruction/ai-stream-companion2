@@ -44,9 +44,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 temp_file.write(data)
                 temp_file.seek(0)
                 
-                # Whisper APIで音声認識
-                text = await audio_service.transcribe_audio(temp_file)
-                if text:
-                    await websocket.send_text(text)
+                # 音声認識
+                transcribed_text = await audio_service.transcribe_audio(temp_file)
+                if transcribed_text:
+                    # AIによるレスポンス生成
+                    response = await audio_service.generate_response(transcribed_text)
+                    # クライアントに送信
+                    await websocket.send_text(response)
     except WebSocketDisconnect:
-        print("クライアントが切断されました") 
+        print("クライアントが切断されました")
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        await websocket.close() 
