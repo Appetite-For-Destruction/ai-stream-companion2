@@ -36,23 +36,40 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            # バイナリデータとして音声を受け取る
             data = await websocket.receive_bytes()
             
-            # 一時ファイルとして保存
             with tempfile.NamedTemporaryFile(suffix=".webm") as temp_file:
                 temp_file.write(data)
                 temp_file.seek(0)
                 
                 # 音声認識
-                transcribed_text = await audio_service.transcribe_audio(temp_file)
-                if transcribed_text:
-                    # AIによるレスポンス生成
-                    response = await audio_service.generate_response(transcribed_text)
-                    # クライアントに送信
-                    await websocket.send_text(response)
+                transcription_result = await audio_service.transcribe_audio(temp_file)
+                if not transcription_result["success"]:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": transcription_result["error"]
+                    })
+                    continue
+
+                # AIによるレスポンス生成
+                response_result = await audio_service.generate_response(transcription_result["text"])
+                if response_result["success"]:
+                    await websocket.send_json({
+                        "type": "message",
+                        "text": response_result["text"]
+                    })
+                else:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": response_result["error"]
+                    })
+
     except WebSocketDisconnect:
         print("クライアントが切断されました")
     except Exception as e:
-        print(f"エラーが発生しました: {e}")
+        print(f"予期せぬエラーが発生しました: {e}")
+        await websocket.send_json({
+            "type": "error",
+            "error": {"type": "system_error", "message": "サーバーエラーが発生しました"}
+        })
         await websocket.close() 
