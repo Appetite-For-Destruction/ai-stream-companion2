@@ -1,0 +1,12 @@
+my-streaming-app/
+├── frontend/              # Next.js フロントエンド
+│   ├── app/              # App Router
+│   ├── components/       # UI コンポーネント
+│   └── lib/              # ユーティリティ関数
+│
+├── backend/              # FastAPI バックエンド
+│   ├── app/             
+│   │   ├── api/         # APIエンドポイント
+│   │   ├── models/      # Prismaモデル
+│   │   └── services/    # ビジネスロジック
+│   └── prisma/          # Prismaスキーマ 
