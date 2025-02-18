@@ -1,7 +1,10 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from .services.audio_service import AudioService
+import tempfile
 
 app = FastAPI()
+audio_service = AudioService()
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,11 +33,20 @@ manager = ConnectionManager()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    await websocket.accept()
     try:
         while True:
-            data = await websocket.receive_text()
-            # ここでAI処理を実装予定
-            await manager.broadcast(f"Message received: {data}")
-    except:
-        await manager.disconnect(websocket) 
+            # バイナリデータとして音声を受け取る
+            data = await websocket.receive_bytes()
+            
+            # 一時ファイルとして保存
+            with tempfile.NamedTemporaryFile(suffix=".webm") as temp_file:
+                temp_file.write(data)
+                temp_file.seek(0)
+                
+                # Whisper APIで音声認識
+                text = await audio_service.transcribe_audio(temp_file)
+                if text:
+                    await websocket.send_text(text)
+    except WebSocketDisconnect:
+        print("クライアントが切断されました") 
