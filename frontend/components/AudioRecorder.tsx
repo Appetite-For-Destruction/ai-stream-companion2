@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Mic, MicOff } from 'lucide-react';
 
+type WebSocketError = {
+    type: string;
+    message: string;
+};
+
 export default function AudioRecorder() {
     const [isRecording, setIsRecording] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -15,11 +20,19 @@ export default function AudioRecorder() {
         wsRef.current = new WebSocket('ws://localhost:8000/ws');
         
         wsRef.current.onopen = () => {
-            console.log('WebSocket接続が確立されました');
+            setError(null);
         };
 
-        wsRef.current.onerror = (error) => {
-            console.error('WebSocket エラー:', error);
+        wsRef.current.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'error') {
+                setError(data.error.message);
+                // エラーメッセージを5秒後に消去
+                setTimeout(() => setError(null), 5000);
+            }
+        };
+
+        wsRef.current.onerror = () => {
             setError('サーバーとの接続に失敗しました');
         };
 
