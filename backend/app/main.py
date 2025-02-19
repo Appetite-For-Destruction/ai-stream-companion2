@@ -1,7 +1,12 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from .services.audio_service import AudioService
+import tempfile
+import logging
 
 app = FastAPI()
+audio_service = AudioService()
+logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,8 +38,34 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            data = await websocket.receive_text()
-            # ここでAI処理を実装予定
-            await manager.broadcast(f"Message received: {data}")
-    except:
+            data = await websocket.receive_bytes()
+            
+            with tempfile.NamedTemporaryFile(suffix=".webm") as temp_file:
+                temp_file.write(data)
+                temp_file.seek(0)
+                
+                # 音声認識とレスポンス生成
+                result = await audio_service.transcribe_audio(temp_file)
+                
+                if result["success"]:
+                    await websocket.send_json({
+                        "type": "message",
+                        "text": result["text"]
+                    })
+                else:
+                    logger.error(f"Processing error: {result['error']}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": result["error"]
+                    })
+
+    except WebSocketDisconnect:
+        await manager.disconnect(websocket)
+        logger.info("Client disconnected")
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        await websocket.send_json({
+            "type": "error",
+            "error": {"type": "system_error", "message": "サーバーエラーが発生しました"}
+        })
         await manager.disconnect(websocket) 
