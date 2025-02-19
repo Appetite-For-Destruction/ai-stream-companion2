@@ -2,9 +2,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from .services.audio_service import AudioService
 import tempfile
+import logging
 
 app = FastAPI()
 audio_service = AudioService()
+logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,7 +35,7 @@ manager = ConnectionManager()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
+    await manager.connect(websocket)
     try:
         while True:
             data = await websocket.receive_bytes()
@@ -42,34 +44,28 @@ async def websocket_endpoint(websocket: WebSocket):
                 temp_file.write(data)
                 temp_file.seek(0)
                 
-                # 音声認識
-                transcription_result = await audio_service.transcribe_audio(temp_file)
-                if not transcription_result["success"]:
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": transcription_result["error"]
-                    })
-                    continue
-
-                # AIによるレスポンス生成
-                response_result = await audio_service.generate_response(transcription_result["text"])
-                if response_result["success"]:
+                # 音声認識とレスポンス生成
+                result = await audio_service.transcribe_audio(temp_file)
+                
+                if result["success"]:
                     await websocket.send_json({
                         "type": "message",
-                        "text": response_result["text"]
+                        "text": result["text"]
                     })
                 else:
+                    logger.error(f"Processing error: {result['error']}")
                     await websocket.send_json({
                         "type": "error",
-                        "error": response_result["error"]
+                        "error": result["error"]
                     })
 
     except WebSocketDisconnect:
-        print("クライアントが切断されました")
+        await manager.disconnect(websocket)
+        logger.info("Client disconnected")
     except Exception as e:
-        print(f"予期せぬエラーが発生しました: {e}")
+        logger.error(f"Unexpected error: {str(e)}")
         await websocket.send_json({
             "type": "error",
             "error": {"type": "system_error", "message": "サーバーエラーが発生しました"}
         })
-        await websocket.close() 
+        await manager.disconnect(websocket) 

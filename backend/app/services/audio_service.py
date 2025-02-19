@@ -5,8 +5,13 @@ import subprocess
 from typing import BinaryIO, Dict, Union
 from dotenv import load_dotenv
 from fastapi import WebSocketDisconnect
+import logging
 
 load_dotenv()
+
+# ロガーの設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class AudioServiceError(Exception):
     def __init__(self, message: str, error_type: str):
@@ -19,35 +24,72 @@ class AudioService:
         openai.api_key = os.getenv("OPENAI_API_KEY")
         if not openai.api_key:
             raise AudioServiceError("OpenAI APIキーが設定されていません", "config_error")
+        logger.info("AudioService initialized with OpenAI API key")
 
     async def convert_audio(self, input_file: str) -> str:
         """WebMをMP3に変換"""
         output_file = input_file.replace('.webm', '.mp3')
         try:
+            logger.info(f"Converting audio: {input_file} -> {output_file}")
             result = subprocess.run([
-                'ffmpeg', '-i', input_file,
-                '-acodec', 'libmp3lame',
+                'ffmpeg',
+                '-y',
+                '-i', input_file,
+                '-c:a', 'libmp3lame',
                 '-ar', '44100',
+                '-ac', '1',
+                '-b:a', '128k',
+                '-hide_banner',  # FFmpegのバナー表示を抑制
                 output_file
-            ], check=True, capture_output=True)
+            ], capture_output=True, text=True)
+
+            if result.returncode != 0:
+                logger.error(f"FFmpeg error: {result.stderr}")
+                raise AudioServiceError(
+                    "音声変換に失敗しました",
+                    "conversion_error"
+                )
+
+            if not os.path.exists(output_file):
+                raise AudioServiceError(
+                    "変換後のファイルが生成されませんでした",
+                    "conversion_error"
+                )
+
+            file_size = os.path.getsize(output_file)
+            logger.info(f"Converted file size: {file_size} bytes")
+            
             return output_file
+
         except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg error: {e.stderr}")
             raise AudioServiceError(
-                f"音声変換に失敗しました: {e.stderr.decode()}", 
+                "FFmpegの実行に失敗しました",
                 "conversion_error"
             )
-        except FileNotFoundError:
+        except Exception as e:
+            logger.error(f"Unexpected error during conversion: {str(e)}")
             raise AudioServiceError(
-                "ffmpegがインストールされていません", 
-                "system_error"
+                str(e),
+                "conversion_error"
             )
 
     async def transcribe_audio(self, audio_data: BinaryIO) -> Dict[str, Union[str, bool]]:
         temp_files = []
         try:
-            # 一時ファイルとしてWebMを保存
+            logger.info("Starting audio transcription")
             with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_webm:
-                temp_webm.write(audio_data.read())
+                audio_data.seek(0)
+                content = audio_data.read()
+                logger.info(f"Received audio data size: {len(content)} bytes")
+                if len(content) < 1000:  # 音声データが小さすぎる場合はスキップ
+                    return {
+                        "success": False,
+                        "text": "",
+                        "error": {"type": "data_error", "message": "音声データが短すぎます"}
+                    }
+                
+                temp_webm.write(content)
                 temp_webm_path = temp_webm.name
                 temp_files.append(temp_webm_path)
 
@@ -57,53 +99,42 @@ class AudioService:
 
             # Whisper APIで音声認識
             with open(temp_mp3_path, 'rb') as audio_file:
-                response = await openai.audio.transcriptions.create(
-                    model="whisper-1",
+                client = openai.AsyncOpenAI()
+                response = await client.audio.transcriptions.create(
                     file=audio_file,
+                    model="whisper-1",
                     language="ja"
                 )
 
-            return {
-                "success": True,
-                "text": response.text,
-                "error": None
-            }
+                if not response.text:
+                    return {
+                        "success": False,
+                        "text": "",
+                        "error": {"type": "transcription_error", "message": "音声認識結果が空でした"}
+                    }
 
-        except AudioServiceError as e:
-            return {
-                "success": False,
-                "text": "",
-                "error": {"type": e.error_type, "message": e.message}
-            }
-        except openai.RateLimitError:
-            return {
-                "success": False,
-                "text": "",
-                "error": {"type": "rate_limit", "message": "APIレート制限に達しました"}
-            }
-        except openai.APIError as e:
-            return {
-                "success": False,
-                "text": "",
-                "error": {"type": "api_error", "message": str(e)}
-            }
+                # AIによるレスポンス生成
+                return await self.generate_response(response.text)
+
         except Exception as e:
+            logger.error(f"Error during transcription: {str(e)}")
             return {
                 "success": False,
                 "text": "",
                 "error": {"type": "unknown", "message": str(e)}
             }
         finally:
-            # 一時ファイルの削除
             for file_path in temp_files:
                 try:
-                    os.unlink(file_path)
-                except Exception:
-                    pass
+                    if os.path.exists(file_path):
+                        os.unlink(file_path)
+                except Exception as e:
+                    logger.error(f"Failed to delete {file_path}: {str(e)}")
 
     async def generate_response(self, text: str) -> Dict[str, Union[str, bool]]:
         try:
-            response = await openai.chat.completions.create(
+            client = openai.AsyncOpenAI()  # AsyncOpenAIクライアントを使用
+            response = await client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "あなたは配信者のチャットに現れるコメンテーターです。短く、面白く、親しみやすいコメントをしてください。"},
@@ -111,18 +142,14 @@ class AudioService:
                 ],
                 max_tokens=100
             )
+            logger.info(f"Generated AI response: {response.choices[0].message.content}")
             return {
                 "success": True,
                 "text": response.choices[0].message.content,
                 "error": None
             }
-        except openai.RateLimitError:
-            return {
-                "success": False,
-                "text": "",
-                "error": {"type": "rate_limit", "message": "APIレート制限に達しました"}
-            }
         except Exception as e:
+            logger.error(f"Response generation error: {str(e)}")
             return {
                 "success": False,
                 "text": "",

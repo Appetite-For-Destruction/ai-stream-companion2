@@ -19,8 +19,14 @@ const config = {
     extend: {
       keyframes: {
         "slide-left": {
-          "0%": { transform: "translateX(100%)" },
-          "100%": { transform: "translateX(-100%)" }
+          "0%": { 
+            transform: "translateX(100%)",
+            opacity: "0"
+          },
+          "100%": { 
+            transform: "translateX(0)",
+            opacity: "1"
+          }
         },
         "accordion-down": {
           from: { height: "0" },
@@ -32,7 +38,7 @@ const config = {
         },
       },
       animation: {
-        "slide-left": "slide-left 10s linear",
+        "slide-left": "slide-left 0.5s ease-out forwards",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
