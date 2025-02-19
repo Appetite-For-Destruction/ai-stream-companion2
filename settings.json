@@ -1,0 +1,11 @@
+{
+    // 他の設定がある場合はここに記述
+    "editor.fontSize": 14,
+    "editor.wordWrap": "on",
+  
+    // Tailwind CSS に関連付ける設定を追加
+    "files.associations": {
+      "*.css": "tailwindcss"
+    }
+  }
+  
