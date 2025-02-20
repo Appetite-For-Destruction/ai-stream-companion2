@@ -11,7 +11,6 @@ export default function AudioRecorder() {
     const [error, setError] = useState<string | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<BlobPart[]>([]);
-    const lastProcessTimeRef = useRef<number>(Date.now());
     const wsManager = WebSocketManager.getInstance();
 
     useEffect(() => {
@@ -30,27 +29,6 @@ export default function AudioRecorder() {
         };
     }, []);
 
-    const processChunks = async (isLastChunk: boolean = false) => {
-        if (chunksRef.current.length > 0) {
-            try {
-                const blob = new Blob(chunksRef.current, { 
-                    type: mediaRecorderRef.current?.mimeType || 'audio/webm'  // 実際のmimeTypeを使用
-                });
-                if (blob.size < 5000) {
-                    console.log('Skipping small audio chunk');
-                    return;
-                }
-                console.log(`Sending ${isLastChunk ? 'final' : ''} audio chunk, size:`, blob.size);
-                wsManager.sendMessage(blob);
-                chunksRef.current = [];
-                lastProcessTimeRef.current = Date.now();
-            } catch (err) {
-                console.error('Error sending audio data:', err);
-                setError('音声データの送信に失敗しました');
-            }
-        }
-    };
-
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -64,34 +42,46 @@ export default function AudioRecorder() {
 
             // 録音開始時にリセット
             chunksRef.current = [];
-            lastProcessTimeRef.current = Date.now();
 
             const mediaRecorder = new MediaRecorder(stream, {
                 mimeType: 'audio/webm',
-                audioBitsPerSecond: 128000,
-                bitsPerSecond: 128000
+                audioBitsPerSecond: 128000
             });
             mediaRecorderRef.current = mediaRecorder;
 
+            // 全ての音声データを一つのチャンクとして扱う
             mediaRecorder.ondataavailable = async (event) => {
                 if (event.data.size > 0) {
+                    console.log('Chunk size:', event.data.size, 'MIME type:', event.data.type);
+                    // チャンクを蓄積するだけ
                     chunksRef.current.push(event.data);
-                    const currentTime = Date.now();
-                    
-                    if (currentTime - lastProcessTimeRef.current >= 10000) {
-                        await processChunks();
-                    }
                 }
             };
 
             mediaRecorder.onstop = async () => {
-                await processChunks(true);
-                stream.getTracks().forEach(track => track.stop());
-                mediaRecorderRef.current = null;
-                chunksRef.current = [];
+                try {
+                    if (chunksRef.current.length > 0) {
+                        const blob = new Blob(chunksRef.current, { 
+                            type: 'audio/webm'
+                        });
+                        console.log('Final blob size:', blob.size);
+                        if (blob.size < 1000) {
+                            throw new Error('録音データが小さすぎます');
+                        }
+                        wsManager.sendMessage(blob);
+                    }
+                } catch (err) {
+                    console.error('録音データの処理に失敗しました:', err);
+                    setError(err instanceof Error ? err.message : '録音データの処理に失敗しました');
+                } finally {
+                    stream.getTracks().forEach(track => track.stop());
+                    mediaRecorderRef.current = null;
+                    chunksRef.current = [];
+                }
             };
 
-            mediaRecorder.start(500);
+            // より短い間隔で録音を区切る
+            mediaRecorder.start(1000);
             setIsRecording(true);
             setError(null);
         } catch (err) {

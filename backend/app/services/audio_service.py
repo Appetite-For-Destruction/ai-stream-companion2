@@ -31,19 +31,28 @@ class AudioService:
         output_file = input_file.replace('.webm', '.mp3')
         try:
             logger.info(f"Converting audio: {input_file} -> {output_file}")
+            
+            # 入力ファイルのフォーマットを確認
+            probe_result = subprocess.run([
+                'ffprobe',
+                '-v', 'error',
+                '-show_entries', 'format=format_name',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                input_file
+            ], capture_output=True, text=True)
+            
+            logger.info(f"Input format probe result: {probe_result.stdout.strip()}")
+            
             result = subprocess.run([
                 'ffmpeg',
                 '-y',
-                '-fflags', '+genpts',
+                '-f', 'webm',  # 入力フォーマットを明示的に指定
                 '-i', input_file,
-                '-c:a', 'libmp3lame',
+                '-acodec', 'libmp3lame',  # より明示的なコーデック指定
                 '-ar', '44100',
                 '-ac', '1',
                 '-b:a', '128k',
-                '-f', 'mp3',  # 出力フォーマットを明示的に指定
-                '-write_xing', '0',  # Xingヘッダーを無効化
-                '-id3v2_version', '0',  # ID3タグを無効化
-                '-hide_banner',
+                '-f', 'mp3',
                 output_file
             ], capture_output=True, text=True)
 
@@ -80,15 +89,21 @@ class AudioService:
         try:
             logger.info("Starting audio transcription")
             with tempfile.NamedTemporaryFile(suffix='.webm', delete=False, mode='wb') as temp_webm:
-                logger.info(f"Created temporary file: {temp_webm.name}")
-                temp_files.append(temp_webm.name)
-                
                 audio_data.seek(0)
                 content = audio_data.read()
+                
+                # ファイルヘッダーの確認
+                logger.info(f"First 16 bytes of content: {content[:16].hex()}")
+                
                 temp_webm.write(content)
-                temp_webm.flush()  # 確実にディスクに書き込む
+                temp_webm.flush()
+                os.fsync(temp_webm.fileno())  # 確実にディスクに書き込む
+                
+                temp_files.append(temp_webm.name)
                 
                 # ファイルの存在とサイズを確認
+                logger.info(f"Temp file path: {temp_webm.name}")
+                logger.info(f"Temp file exists: {os.path.exists(temp_webm.name)}")
                 logger.info(f"Temp file size: {os.path.getsize(temp_webm.name)}")
 
             # MP3に変換
