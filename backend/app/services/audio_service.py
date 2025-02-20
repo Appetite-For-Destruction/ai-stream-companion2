@@ -33,7 +33,8 @@ class AudioService:
             logger.info(f"Converting audio: {input_file} -> {output_file}")
             result = subprocess.run([
                 'ffmpeg',
-                '-y',  # 既存のファイルを上書き
+                '-y',
+                '-fflags', '+genpts',  # タイムスタンプを生成
                 '-i', input_file,
                 '-c:a', 'libmp3lame',
                 '-ar', '44100',

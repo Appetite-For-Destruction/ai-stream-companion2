@@ -65,7 +65,7 @@ export default function AudioRecorder() {
             lastProcessTimeRef.current = Date.now();
 
             const mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'audio/webm;codecs=opus',
+                mimeType: 'audio/webm',
                 audioBitsPerSecond: 128000
             });
             mediaRecorderRef.current = mediaRecorder;
@@ -75,7 +75,7 @@ export default function AudioRecorder() {
                     chunksRef.current.push(event.data);
                     const currentTime = Date.now();
                     
-                    if (currentTime - lastProcessTimeRef.current >= 5000) {
+                    if (currentTime - lastProcessTimeRef.current >= 10000) {
                         await processChunks();
                     }
                 }
