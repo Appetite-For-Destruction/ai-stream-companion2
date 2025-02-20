@@ -1,35 +1,26 @@
-type MessageHandler = (message: any) => void;
+import { WebSocketMessage } from './types';
 
-class WebSocketManager {
+export default class WebSocketManager {
     private static instance: WebSocketManager;
     private ws: WebSocket | null = null;
-    private messageHandlers: Set<MessageHandler> = new Set();
+    private messageHandlers: ((data: WebSocketMessage) => void)[] = [];
 
     private constructor() {
-        this.connect();
-    }
-
-    static getInstance(): WebSocketManager {
-        if (!WebSocketManager.instance) {
-            WebSocketManager.instance = new WebSocketManager();
-        }
-        return WebSocketManager.instance;
-    }
-
-    private connect() {
         this.ws = new WebSocket('ws://localhost:8000/ws');
         
-        this.ws.onopen = () => {
-            console.log('WebSocket connected');
-        };
-
         this.ws.onmessage = (event) => {
+            console.log('WebSocket raw message:', event.data);  // デバッグ用
             try {
                 const data = JSON.parse(event.data);
+                console.log('WebSocket parsed message:', data);  // デバッグ用
                 this.messageHandlers.forEach(handler => handler(data));
-            } catch (err) {
-                console.error('Message parsing error:', err);
+            } catch (error) {
+                console.error('Failed to parse WebSocket message:', error);
             }
+        };
+
+        this.ws.onopen = () => {
+            console.log('WebSocket connection established');
         };
 
         this.ws.onerror = (error) => {
@@ -42,12 +33,19 @@ class WebSocketManager {
         };
     }
 
-    addMessageHandler(handler: MessageHandler) {
-        this.messageHandlers.add(handler);
+    static getInstance(): WebSocketManager {
+        if (!WebSocketManager.instance) {
+            WebSocketManager.instance = new WebSocketManager();
+        }
+        return WebSocketManager.instance;
     }
 
-    removeMessageHandler(handler: MessageHandler) {
-        this.messageHandlers.delete(handler);
+    addMessageHandler(handler: (data: WebSocketMessage) => void) {
+        this.messageHandlers.push(handler);
+    }
+
+    removeMessageHandler(handler: (data: WebSocketMessage) => void) {
+        this.messageHandlers = this.messageHandlers.filter(h => h !== handler);
     }
 
     sendMessage(data: any) {
@@ -62,6 +60,4 @@ class WebSocketManager {
             this.ws = null;
         }
     }
-}
-
-export default WebSocketManager; 
+} 
