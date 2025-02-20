@@ -1,6 +1,8 @@
+import { WebSocketMessage } from './types';
+
 export default class WebSocketManager {
     private static instance: WebSocketManager;
-    private ws: WebSocket;
+    private ws: WebSocket | null = null;
     private messageHandlers: ((data: WebSocketMessage) => void)[] = [];
 
     private constructor() {
