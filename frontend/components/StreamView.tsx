@@ -3,73 +3,36 @@
 import { useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { AlertCircle } from 'lucide-react';
-
-type Message = {
-    type: 'message' | 'error';
-    text: string;  // messageタイプの場合は必須
-    error?: {      // errorタイプの場合は必須
-        type: string;
-        message: string;
-    };
-};
-
-// メッセージ作成用のヘルパー関数
-const createMessage = (data: any): Message => {
-    if (data.type === 'message') {
-        return {
-            type: 'message',
-            text: data.text,
-            error: undefined
-        };
-    } else {
-        return {
-            type: 'error',
-            text: '',
-            error: data.error
-        };
-    }
-};
+import WebSocketManager from '@/lib/websocket';
+import { WebSocketMessage } from '@/lib/types';
 
 export default function StreamView() {
-    const [messages, setMessages] = useState<Message[]>([]);
+    const [messages, setMessages] = useState<WebSocketMessage[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const wsRef = useRef<WebSocket | null>(null);
+    const wsManager = WebSocketManager.getInstance();
 
     useEffect(() => {
-        wsRef.current = new WebSocket('ws://localhost:8000/ws');
-        
-        wsRef.current.onopen = () => {
-            console.log('WebSocket connection established');
-        };
-        
-        wsRef.current.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                console.log('Received message:', data);
+        const handleMessage = (data: WebSocketMessage) => {
+            console.log('Received message:', data);
+            setMessages(prev => [...prev, data]);
 
-                const newMessage = createMessage(data);
-                setMessages(prev => [...prev, newMessage]);
+            // 自動スクロール
+            setTimeout(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
 
-                // 自動スクロール
+            // エラーメッセージの自動削除
+            if (data.type === 'error') {
                 setTimeout(() => {
-                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                }, 100);
-
-                // エラーメッセージの自動削除
-                if (newMessage.type === 'error') {
-                    setTimeout(() => {
-                        setMessages(prev => prev.filter(msg => msg !== newMessage));
-                    }, 5000);
-                }
-            } catch (err) {
-                console.error('Message parsing error:', err);
+                    setMessages(prev => prev.filter(msg => msg !== data));
+                }, 5000);
             }
         };
+
+        wsManager.addMessageHandler(handleMessage);
 
         return () => {
-            if (wsRef.current?.readyState === WebSocket.OPEN) {
-                wsRef.current.close();
-            }
+            wsManager.removeMessageHandler(handleMessage);
         };
     }, []);
 
