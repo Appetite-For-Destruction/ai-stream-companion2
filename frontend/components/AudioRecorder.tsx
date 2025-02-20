@@ -1,22 +1,107 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Mic, MicOff } from 'lucide-react';
-import WebSocketManager from '@/lib/websocket';
-import { WebSocketMessage } from '@/lib/types';
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Mic, MicOff } from "lucide-react";
+import WebSocketManager from "@/lib/websocket";
+import { WebSocketMessage } from "@/lib/types";
 
 export default function AudioRecorder() {
     const [isRecording, setIsRecording] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const chunksRef = useRef<BlobPart[]>([]);
+    const streamRef = useRef<MediaStream | null>(null);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
+    // refで現在の録音状態を管理（onstop のクロージャの問題を解決）
+    const isRecordingRef = useRef(isRecording);
     const wsManager = WebSocketManager.getInstance();
+    const CHUNK_INTERVAL = 10000; // 10秒ごと
+
+    useEffect(() => {
+        isRecordingRef.current = isRecording;
+    }, [isRecording]);
+
+    // 指定したストリームから新しい MediaRecorder を生成するヘルパー関数
+    const createNewRecorder = (stream: MediaStream): MediaRecorder => {
+        const recorder = new MediaRecorder(stream, {
+            // 修正: MIME タイプに codecs=opus を指定し、正しい WebM ヘッダーが付与されるようにする
+            mimeType: "audio/webm; codecs=opus",
+            audioBitsPerSecond: 128000,
+        });
+        recorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                console.log("Received segment, size:", event.data.size);
+                wsManager.sendMessage(event.data);
+            }
+        };
+        recorder.onerror = (event) => {
+            console.error("MediaRecorder error:", event.error);
+            setError("録音中にエラーが発生しました");
+        };
+        recorder.onstop = () => {
+            // 最新の録音状態を isRecordingRef.current で判定する
+            if (isRecordingRef.current && stream.active) {
+                // 自動再開：新たな recorder を作成して録音開始
+                mediaRecorderRef.current = createNewRecorder(stream);
+                mediaRecorderRef.current.start();
+            } else {
+                // 停止ボタンが押されたときは、ストリームも停止
+                stream.getTracks().forEach((track) => track.stop());
+            }
+        };
+        return recorder;
+    };
+
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    sampleRate: 44100,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                },
+            });
+            streamRef.current = stream;
+
+            // 新しい MediaRecorder を作成して開始
+            const recorder = createNewRecorder(stream);
+            mediaRecorderRef.current = recorder;
+            recorder.start();
+            setIsRecording(true);
+            setError(null);
+
+            // CHUNK_INTERVAL ごとに recorder.stop() を呼び出してセグメントを確定する
+            intervalRef.current = setInterval(() => {
+                if (mediaRecorderRef.current && isRecordingRef.current) {
+                    mediaRecorderRef.current.stop();
+                }
+            }, CHUNK_INTERVAL);
+        } catch (err) {
+            console.error("音声の取得に失敗しました:", err);
+            setError("マイクへのアクセスに失敗しました");
+            setIsRecording(false);
+        }
+    };
+
+    const stopRecording = () => {
+        setIsRecording(false);
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+        if (mediaRecorderRef.current) {
+            mediaRecorderRef.current.stop();
+        }
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+        }
+    };
 
     useEffect(() => {
         const handleMessage = (data: WebSocketMessage) => {
-            if (data.type === 'error') {
-                const errorMessage = data.error?.message || 'エラーが発生しました';
+            if (data.type === "error") {
+                const errorMessage = data.error?.message || "エラーが発生しました";
                 setError(errorMessage);
                 setTimeout(() => setError(null), 5000);
             }
@@ -26,77 +111,17 @@ export default function AudioRecorder() {
 
         return () => {
             wsManager.removeMessageHandler(handleMessage);
+            if (mediaRecorderRef.current && isRecordingRef.current) {
+                mediaRecorderRef.current.stop();
+            }
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach((track) => track.stop());
+            }
         };
-    }, []);
-
-    const startRecording = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    channelCount: 1,
-                    sampleRate: 44100,
-                    echoCancellation: true,
-                    noiseSuppression: true
-                }
-            });
-
-            // 録音開始時にリセット
-            chunksRef.current = [];
-
-            const mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'audio/webm',
-                audioBitsPerSecond: 128000
-            });
-            mediaRecorderRef.current = mediaRecorder;
-
-            // 全ての音声データを一つのチャンクとして扱う
-            mediaRecorder.ondataavailable = async (event) => {
-                if (event.data.size > 0) {
-                    console.log('Chunk size:', event.data.size, 'MIME type:', event.data.type);
-                    // チャンクを蓄積するだけ
-                    chunksRef.current.push(event.data);
-                }
-            };
-
-            mediaRecorder.onstop = async () => {
-                try {
-                    if (chunksRef.current.length > 0) {
-                        const blob = new Blob(chunksRef.current, { 
-                            type: 'audio/webm'
-                        });
-                        console.log('Final blob size:', blob.size);
-                        if (blob.size < 1000) {
-                            throw new Error('録音データが小さすぎます');
-                        }
-                        wsManager.sendMessage(blob);
-                    }
-                } catch (err) {
-                    console.error('録音データの処理に失敗しました:', err);
-                    setError(err instanceof Error ? err.message : '録音データの処理に失敗しました');
-                } finally {
-                    stream.getTracks().forEach(track => track.stop());
-                    mediaRecorderRef.current = null;
-                    chunksRef.current = [];
-                }
-            };
-
-            // より短い間隔で録音を区切る
-            mediaRecorder.start(1000);
-            setIsRecording(true);
-            setError(null);
-        } catch (err) {
-            console.error('音声の取得に失敗しました:', err);
-            setError('マイクへのアクセスに失敗しました');
-            setIsRecording(false);
-        }
-    };
-
-    const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-        }
-    };
+    }, [wsManager]);
 
     return (
         <div className="fixed bottom-4 right-4 flex flex-col items-end gap-2">
@@ -124,4 +149,4 @@ export default function AudioRecorder() {
             </Button>
         </div>
     );
-} 
+}

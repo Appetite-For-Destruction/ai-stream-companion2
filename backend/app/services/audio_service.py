@@ -40,15 +40,18 @@ class AudioService:
                 '-of', 'default=noprint_wrappers=1:nokey=1',
                 input_file
             ], capture_output=True, text=True)
-            
+            if probe_result.returncode != 0:
+                logger.error(f"FFprobe error: {probe_result.stderr}")
+                raise AudioServiceError("入力ファイルのフォーマット取得に失敗しました", "conversion_error")
             logger.info(f"Input format probe result: {probe_result.stdout.strip()}")
             
             result = subprocess.run([
                 'ffmpeg',
+                '-hide_banner',
                 '-y',
                 '-f', 'webm',  # 入力フォーマットを明示的に指定
                 '-i', input_file,
-                '-acodec', 'libmp3lame',  # より明示的なコーデック指定
+                '-acodec', 'libmp3lame',  # コーデック指定
                 '-ar', '44100',
                 '-ac', '1',
                 '-b:a', '128k',
@@ -61,28 +64,18 @@ class AudioService:
                 logger.error(f"FFmpeg command output: {result.stdout}")
                 logger.error(f"Input file exists: {os.path.exists(input_file)}")
                 logger.error(f"Input file size: {os.path.getsize(input_file) if os.path.exists(input_file) else 'N/A'}")
-                raise AudioServiceError(
-                    f"音声変換に失敗しました: {result.stderr}",
-                    "conversion_error"
-                )
+                raise AudioServiceError(f"音声変換に失敗しました: {result.stderr}", "conversion_error")
 
-            # 変換後のファイルサイズをログ出力
             if os.path.exists(output_file):
                 file_size = os.path.getsize(output_file)
                 logger.info(f"Converted file size: {file_size} bytes")
                 return output_file
             else:
-                raise AudioServiceError(
-                    "変換後のファイルが生成されませんでした",
-                    "conversion_error"
-                )
+                raise AudioServiceError("変換後のファイルが生成されませんでした", "conversion_error")
 
         except subprocess.CalledProcessError as e:
             logger.error(f"FFmpeg error: {e.stderr}")
-            raise AudioServiceError(
-                "FFmpegの実行に失敗しました",
-                "conversion_error"
-            )
+            raise AudioServiceError("FFmpegの実行に失敗しました", "conversion_error")
 
     async def transcribe_audio(self, audio_data: BinaryIO) -> Dict[str, Union[str, bool]]:
         temp_files = []
