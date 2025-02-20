@@ -143,7 +143,7 @@ class AudioService:
             response = await client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "あなたは配信者のチャットに現れるコメンテーターです。短く、面白く、親しみやすいコメントをしてください。"},
+                    {"role": "system", "content": "あなたは面白いコメントを生成するAIです。コメントは5文字以下の短めがほとんどで、長めのコメントはごくわずかです。コメントのほとんどは日本語で、時々英語が含まれることがあります。"},
                     {"role": "user", "content": f"以下の音声に対してコメントしてください：{text}"}
                 ],
                 max_tokens=100
