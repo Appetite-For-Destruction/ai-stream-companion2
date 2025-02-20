@@ -3,68 +3,35 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Mic, MicOff } from 'lucide-react';
-
-type WebSocketError = {
-    type: string;
-    message: string;
-};
+import WebSocketManager from '@/lib/websocket';
+import { WebSocketMessage } from '@/lib/types';
 
 export default function AudioRecorder() {
     const [isRecording, setIsRecording] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const wsRef = useRef<WebSocket | null>(null);
     const chunksRef = useRef<BlobPart[]>([]);
     const lastProcessTimeRef = useRef<number>(Date.now());
+    const wsManager = WebSocketManager.getInstance();
 
     useEffect(() => {
-        // WebSocket接続の初期化
-        wsRef.current = new WebSocket('ws://localhost:8000/ws');
-        
-        wsRef.current.onopen = () => {
-            console.log('WebSocket connected');
-            setError(null);
-        };
-
-        wsRef.current.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                console.log('Received message:', data);
-
-                if (data.type === 'error') {
-                    const errorMessage = data.error?.message || 'エラーが発生しました';
-                    console.error('Server error:', data.error);
-                    setError(errorMessage);
-                    setTimeout(() => setError(null), 5000);
-                } else if (data.type === 'message') {
-                    console.log('AI response:', data.text);
-                    setError(null);
-                }
-            } catch (err) {
-                console.error('Message parsing error:', err);
-                setError('メッセージの処理中にエラーが発生しました');
+        const handleMessage = (data: WebSocketMessage) => {
+            if (data.type === 'error') {
+                const errorMessage = data.error?.message || 'エラーが発生しました';
+                setError(errorMessage);
+                setTimeout(() => setError(null), 5000);
             }
         };
 
-        wsRef.current.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            setError('サーバーとの接続に失敗しました');
-        };
-
-        wsRef.current.onclose = () => {
-            console.log('WebSocket disconnected');
-        };
+        wsManager.addMessageHandler(handleMessage);
 
         return () => {
-            if (wsRef.current) {
-                wsRef.current.close();
-                wsRef.current = null;
-            }
+            wsManager.removeMessageHandler(handleMessage);
         };
     }, []);
 
     const processChunks = async (isLastChunk: boolean = false) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN && chunksRef.current.length > 0) {
+        if (chunksRef.current.length > 0) {
             try {
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
                 if (blob.size < 1000) {
@@ -72,7 +39,7 @@ export default function AudioRecorder() {
                     return;
                 }
                 console.log(`Sending ${isLastChunk ? 'final' : ''} audio chunk, size:`, blob.size);
-                wsRef.current.send(blob);
+                wsManager.sendMessage(blob);
                 chunksRef.current = [];
                 lastProcessTimeRef.current = Date.now();
             } catch (err) {
