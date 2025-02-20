@@ -34,12 +34,15 @@ class AudioService:
             result = subprocess.run([
                 'ffmpeg',
                 '-y',
-                '-fflags', '+genpts',  # タイムスタンプを生成
+                '-fflags', '+genpts',
                 '-i', input_file,
                 '-c:a', 'libmp3lame',
                 '-ar', '44100',
                 '-ac', '1',
                 '-b:a', '128k',
+                '-f', 'mp3',  # 出力フォーマットを明示的に指定
+                '-write_xing', '0',  # Xingヘッダーを無効化
+                '-id3v2_version', '0',  # ID3タグを無効化
                 '-hide_banner',
                 output_file
             ], capture_output=True, text=True)

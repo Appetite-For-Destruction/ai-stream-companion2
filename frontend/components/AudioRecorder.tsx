@@ -33,7 +33,9 @@ export default function AudioRecorder() {
     const processChunks = async (isLastChunk: boolean = false) => {
         if (chunksRef.current.length > 0) {
             try {
-                const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
+                const blob = new Blob(chunksRef.current, { 
+                    type: mediaRecorderRef.current?.mimeType || 'audio/webm'  // 実際のmimeTypeを使用
+                });
                 if (blob.size < 5000) {
                     console.log('Skipping small audio chunk');
                     return;
@@ -66,7 +68,8 @@ export default function AudioRecorder() {
 
             const mediaRecorder = new MediaRecorder(stream, {
                 mimeType: 'audio/webm',
-                audioBitsPerSecond: 128000
+                audioBitsPerSecond: 128000,
+                bitsPerSecond: 128000
             });
             mediaRecorderRef.current = mediaRecorder;
 
@@ -88,7 +91,7 @@ export default function AudioRecorder() {
                 chunksRef.current = [];
             };
 
-            mediaRecorder.start(1000);
+            mediaRecorder.start(500);
             setIsRecording(true);
             setError(null);
         } catch (err) {
