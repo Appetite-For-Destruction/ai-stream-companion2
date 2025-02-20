@@ -5,4 +5,10 @@ export type WebSocketMessage = {
         type: string;
         message: string;
     };
+};
+
+export type Comment = {
+  id: number;
+  text: string;
+  timestamp: string;
 }; 
