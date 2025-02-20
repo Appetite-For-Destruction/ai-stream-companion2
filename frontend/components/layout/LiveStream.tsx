@@ -1,3 +1,4 @@
+'use client';
 import React, { useEffect, useRef, useState } from 'react';
 import AudioRecorder from '../AudioRecorder';
 
@@ -5,7 +6,7 @@ export default function LiveStream() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streamType, setStreamType] = useState<'camera' | 'screen' | 'none'>('none');
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
-  const [subscribers, setSubscribers] = useState<number>(0); // 固定の購読者数を保持するためのステート
+  const [subscribers, setSubscribers] = useState<number>(0);
 
   const startCameraStream = async () => {
     if (mediaStream) {
@@ -62,15 +63,21 @@ export default function LiveStream() {
   }, [streamType]);
 
   useEffect(() => {
-    // コンポーネントがマウントされたときにランダムな購読者数を生成
     const randomSubscribers = Math.floor(Math.random() * 1000) + 1;
     setSubscribers(randomSubscribers);
-  }, []); // 空の依存配列で一度だけ実行
+  }, []);
 
   return (
     <div>
       <div className="aspect-video bg-gray-800 rounded-lg mb-4 relative">
-        <video ref={videoRef} autoPlay className="absolute inset-0 w-full h-full object-cover rounded-lg" />
+        {streamType !== 'none' && (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover rounded-lg"
+          />
+        )}
         <div className="absolute inset-0 flex items-center justify-center">
           {streamType === 'none' && <p className="text-gray-400">Audio Stream Active</p>}
         </div>
