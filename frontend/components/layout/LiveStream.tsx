@@ -5,6 +5,7 @@ export default function LiveStream() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streamType, setStreamType] = useState<'camera' | 'screen' | 'none'>('none');
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+  const [subscribers, setSubscribers] = useState<number>(0); // 固定の購読者数を保持するためのステート
 
   const startCameraStream = async () => {
     if (mediaStream) {
@@ -60,6 +61,12 @@ export default function LiveStream() {
     }
   }, [streamType]);
 
+  useEffect(() => {
+    // コンポーネントがマウントされたときにランダムな購読者数を生成
+    const randomSubscribers = Math.floor(Math.random() * 1000) + 1;
+    setSubscribers(randomSubscribers);
+  }, []); // 空の依存配列で一度だけ実行
+
   return (
     <div>
       <div className="aspect-video bg-gray-800 rounded-lg mb-4 relative">
@@ -75,15 +82,15 @@ export default function LiveStream() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">🔴 Live: AI Stream Session</h1>
         <div className="flex items-center space-x-4">
-          <button onClick={() => setStreamType('camera')} className="bg-blue-500 text-white px-4 py-2 rounded">カメラ</button>
-          <button onClick={() => setStreamType('screen')} className="bg-green-500 text-white px-4 py-2 rounded">画面共有</button>
-          <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center">
-            AI
+          <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
+            S
           </div>
           <div>
-            <p className="font-semibold">AI Assistant</p>
-            <p className="text-sm text-gray-400">Active Listening</p>
+            <p className="font-semibold">Streamer</p>
+            <p className="text-sm text-gray-400">Subscribe: {subscribers}</p>
           </div>
+          <button onClick={() => setStreamType('camera')} className="bg-blue-500 text-white px-4 py-2 rounded">カメラ</button>
+          <button onClick={() => setStreamType('screen')} className="bg-green-500 text-white px-4 py-2 rounded">画面共有</button>
         </div>
       </div>
     </div>
