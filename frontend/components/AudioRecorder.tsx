@@ -34,7 +34,7 @@ export default function AudioRecorder() {
         if (chunksRef.current.length > 0) {
             try {
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
-                if (blob.size < 1000) {
+                if (blob.size < 5000) {
                     console.log('Skipping small audio chunk');
                     return;
                 }

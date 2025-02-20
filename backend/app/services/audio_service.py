@@ -33,33 +33,36 @@ class AudioService:
             logger.info(f"Converting audio: {input_file} -> {output_file}")
             result = subprocess.run([
                 'ffmpeg',
-                '-y',
+                '-y',  # 既存のファイルを上書き
                 '-i', input_file,
                 '-c:a', 'libmp3lame',
                 '-ar', '44100',
                 '-ac', '1',
                 '-b:a', '128k',
-                '-hide_banner',  # FFmpegのバナー表示を抑制
+                '-hide_banner',
                 output_file
             ], capture_output=True, text=True)
 
             if result.returncode != 0:
                 logger.error(f"FFmpeg error: {result.stderr}")
+                logger.error(f"FFmpeg command output: {result.stdout}")
+                logger.error(f"Input file exists: {os.path.exists(input_file)}")
+                logger.error(f"Input file size: {os.path.getsize(input_file) if os.path.exists(input_file) else 'N/A'}")
                 raise AudioServiceError(
-                    "音声変換に失敗しました",
+                    f"音声変換に失敗しました: {result.stderr}",
                     "conversion_error"
                 )
 
-            if not os.path.exists(output_file):
+            # 変換後のファイルサイズをログ出力
+            if os.path.exists(output_file):
+                file_size = os.path.getsize(output_file)
+                logger.info(f"Converted file size: {file_size} bytes")
+                return output_file
+            else:
                 raise AudioServiceError(
                     "変換後のファイルが生成されませんでした",
                     "conversion_error"
                 )
-
-            file_size = os.path.getsize(output_file)
-            logger.info(f"Converted file size: {file_size} bytes")
-            
-            return output_file
 
         except subprocess.CalledProcessError as e:
             logger.error(f"FFmpeg error: {e.stderr}")
@@ -67,34 +70,25 @@ class AudioService:
                 "FFmpegの実行に失敗しました",
                 "conversion_error"
             )
-        except Exception as e:
-            logger.error(f"Unexpected error during conversion: {str(e)}")
-            raise AudioServiceError(
-                str(e),
-                "conversion_error"
-            )
 
     async def transcribe_audio(self, audio_data: BinaryIO) -> Dict[str, Union[str, bool]]:
         temp_files = []
         try:
             logger.info("Starting audio transcription")
-            with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_webm:
+            with tempfile.NamedTemporaryFile(suffix='.webm', delete=False, mode='wb') as temp_webm:
+                logger.info(f"Created temporary file: {temp_webm.name}")
+                temp_files.append(temp_webm.name)
+                
                 audio_data.seek(0)
                 content = audio_data.read()
-                logger.info(f"Received audio data size: {len(content)} bytes")
-                if len(content) < 1000:  # 音声データが小さすぎる場合はスキップ
-                    return {
-                        "success": False,
-                        "text": "",
-                        "error": {"type": "data_error", "message": "音声データが短すぎます"}
-                    }
-                
                 temp_webm.write(content)
-                temp_webm_path = temp_webm.name
-                temp_files.append(temp_webm_path)
+                temp_webm.flush()  # 確実にディスクに書き込む
+                
+                # ファイルの存在とサイズを確認
+                logger.info(f"Temp file size: {os.path.getsize(temp_webm.name)}")
 
             # MP3に変換
-            temp_mp3_path = await self.convert_audio(temp_webm_path)
+            temp_mp3_path = await self.convert_audio(temp_webm.name)
             temp_files.append(temp_mp3_path)
 
             # Whisper APIで音声認識
