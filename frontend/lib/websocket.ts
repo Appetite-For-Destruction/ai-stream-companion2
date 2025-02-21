@@ -62,11 +62,8 @@ export default class WebSocketManager {
             console.log('WebSocket parsed message:', data);
 
             // メッセージの種類に応じた処理
-            if (data.type === 'message') {
-                // 音声認識と画面解析の両方のコメントを追加
+            if (data.type === 'message' || data.type === 'screen_analysis') {
                 this.chatStore.addMessage(data.text);
-            } else if (data.type === 'error') {
-                console.error('Error:', data.error);
             }
 
             // 他のハンドラーにも通知

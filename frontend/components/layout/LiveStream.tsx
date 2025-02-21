@@ -7,6 +7,7 @@ export default function LiveStream() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streamType, setStreamType] = useState<'camera' | 'screen' | 'none'>('none');
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+  const [screenCaptureCleanup, setScreenCaptureCleanup] = useState<(() => void) | null>(null);
   const [subscribers, setSubscribers] = useState<number>(0);
   const [analysisResult, setAnalysisResult] = useState<{
     type: string;
@@ -33,7 +34,7 @@ export default function LiveStream() {
 
   const startScreenStream = async () => {
     if (mediaStream) {
-      mediaStream.getTracks().forEach(track => track.stop()); // 既存のストリームを停止
+      mediaStream.getTracks().forEach(track => track.stop());
     }
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -41,10 +42,22 @@ export default function LiveStream() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         // 画面キャプチャの定期送信を開始
-        startScreenCapture(stream);
+        const cleanup = startScreenCapture(stream);
+        setScreenCaptureCleanup(() => cleanup);
+
+        // 画面共有が停止されたときのイベントリスナーを追加
+        stream.getVideoTracks()[0].addEventListener('ended', () => {
+          if (screenCaptureCleanup) {
+            screenCaptureCleanup();
+            setScreenCaptureCleanup(null);
+          }
+          stopStreams();
+          setStreamType('none');
+        });
       }
     } catch (error) {
       console.error('Error accessing screen:', error);
+      setStreamType('none');
     }
   };
 
@@ -84,6 +97,11 @@ export default function LiveStream() {
       if (videoRef.current) {
         videoRef.current.srcObject = null; // ビデオをクリア
       }
+      // 画面キャプチャのクリーンアップ
+      if (screenCaptureCleanup) {
+        screenCaptureCleanup();
+        setScreenCaptureCleanup(null);
+      }
     }
   };
 
@@ -92,22 +110,13 @@ export default function LiveStream() {
   }, []);
 
   useEffect(() => {
-    if (streamType === 'camera') {
-      startCameraStream();
-    } else if (streamType === 'screen') {
-      startScreenStream();
-    } else {
-      stopStreams(); // どちらも使用しない場合
-    }
-  }, [streamType]);
-
-  useEffect(() => {
     const randomSubscribers = Math.floor(Math.random() * 1000) + 1;
     setSubscribers(randomSubscribers);
   }, []);
 
   useEffect(() => {
     const handleMessage = (data: any) => {
+      // 画面解析結果の処理
       if (data.type === 'screen_analysis') {
         setAnalysisResult(data.data);
       }
@@ -116,6 +125,17 @@ export default function LiveStream() {
     wsManager.addMessageHandler(handleMessage);
     return () => wsManager.removeMessageHandler(handleMessage);
   }, []);
+
+  // streamTypeの変更を監視して適切な処理を実行
+  useEffect(() => {
+    if (streamType === 'camera') {
+      startCameraStream();
+    } else if (streamType === 'screen') {
+      startScreenStream();
+    } else {
+      stopStreams();
+    }
+  }, [streamType]);
 
   return (
     <div>
@@ -161,7 +181,12 @@ export default function LiveStream() {
             <p className="text-sm text-gray-400">Subscribe: {subscribers}</p>
           </div>
           <button onClick={() => setStreamType('camera')} className="bg-blue-500 text-white px-4 py-2 rounded">カメラ</button>
-          <button onClick={() => setStreamType('screen')} className="bg-green-500 text-white px-4 py-2 rounded">画面共有</button>
+          <button 
+            onClick={() => streamType === 'screen' ? setStreamType('none') : setStreamType('screen')}
+            className={`${streamType === 'screen' ? 'bg-red-500' : 'bg-green-500'} text-white px-4 py-2 rounded`}
+          >
+            {streamType === 'screen' ? '共有停止' : '画面共有'}
+          </button>
         </div>
       </div>
     </div>
