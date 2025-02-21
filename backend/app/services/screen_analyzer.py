@@ -33,11 +33,11 @@ class ScreenAnalyzer:
             
             self.previous_frame = gray
             
-            # 基本的な解析結果を返す
+            # numpy配列をPythonのネイティブ型に変換
             return {
-                "frame_size": frame.shape,
-                "average_brightness": np.mean(gray),
-                "motion_detected": motion_detected
+                "frame_size": frame.shape[:2].tolist(),  # numpy配列をリストに変換
+                "average_brightness": float(np.mean(gray)),  # numpy.float64をfloatに変換
+                "motion_detected": bool(motion_detected)  # numpyのbool_をboolに変換
             }
             
         except Exception as e:

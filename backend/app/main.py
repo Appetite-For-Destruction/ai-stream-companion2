@@ -109,8 +109,4 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"Unexpected error: {str(e)}")
     finally:
         logger.info("Cleaning up websocket connection")
-        await manager.disconnect(websocket)
-        try:
-            await websocket.close(code=1000)
-        except Exception as e:
-            logger.error(f"Error during websocket cleanup: {str(e)}") 
+        await manager.disconnect(websocket) 
