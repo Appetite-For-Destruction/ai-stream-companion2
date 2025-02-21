@@ -180,7 +180,12 @@ export default function LiveStream() {
             <p className="font-semibold">Streamer</p>
             <p className="text-sm text-gray-400">Subscribe: {subscribers}</p>
           </div>
-          <button onClick={() => setStreamType('camera')} className="bg-blue-500 text-white px-4 py-2 rounded">カメラ</button>
+          <button 
+            onClick={() => streamType === 'camera' ? setStreamType('none') : setStreamType('camera')}
+            className={`${streamType === 'camera' ? 'bg-red-500' : 'bg-blue-500'} text-white px-4 py-2 rounded`}
+          >
+            {streamType === 'camera' ? 'カメラ停止' : 'カメラ'}
+          </button>
           <button 
             onClick={() => streamType === 'screen' ? setStreamType('none') : setStreamType('screen')}
             className={`${streamType === 'screen' ? 'bg-red-500' : 'bg-green-500'} text-white px-4 py-2 rounded`}
