@@ -4,6 +4,8 @@ from typing import Dict, Any
 import logging
 import openai
 import time
+import base64
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +73,20 @@ class ScreenAnalyzer:
                 }
             
             # 画像サイズが大きすぎる場合の処理
-            MAX_DIMENSION = 1280
+            MAX_DIMENSION = 2048  # Vision APIの推奨最大サイズ
+            MIN_DIMENSION = 768   # Vision APIの推奨最小サイズ
             height, width = frame.shape[:2]
             if width > MAX_DIMENSION or height > MAX_DIMENSION:
                 scale = MAX_DIMENSION / max(width, height)
                 frame = cv2.resize(frame, None, fx=scale, fy=scale)
             
+            # 最小サイズの保証
+            if min(height, width) < MIN_DIMENSION:
+                scale = MIN_DIMENSION / min(height, width)
+                frame = cv2.resize(frame, None, fx=scale, fy=scale)
+            
             # 処理用に小さいサイズにリサイズ
-            process_frame = cv2.resize(frame, (320, 180))
+            process_frame = cv2.resize(frame, (512, 512))  # Vision APIの推奨サイズ
             
             # グレースケール変換
             gray = cv2.cvtColor(process_frame, cv2.COLOR_BGR2GRAY)
@@ -104,13 +112,74 @@ class ScreenAnalyzer:
             edges = cv2.Canny(gray, 100, 200)
             edge_density = float(np.mean(edges > 0))
             
+            # 画面内容の認識（Vision APIを使用）
+            encoded_image = cv2.imencode('.jpg', process_frame)[1].tobytes()
+            vision_client = openai.AsyncOpenAI()
+            try:
+                response = await vision_client.chat.completions.create(
+                    model="gpt-4o-mini",  # 新しいモデル名を使用
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": """
+                                この画面について以下の情報を日本語のJSONで返してください：
+                                {
+                                    "screen_type": "画面の種類（エディタ/ブラウザ/ターミナル/その他）",
+                                    "user_action": "ユーザーの行動（コーディング/閲覧/コマンド実行/その他）",
+                                    "content": "画面の主な内容（50文字以内）"
+                                }
+                                """},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64.b64encode(encoded_image).decode()}",
+                                        "detail": "auto"  # 自動で解像度を決定
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=150,
+                    temperature=0.7  # より自然な応答に
+                )
+                
+                try:
+                    screen_content = json.loads(response.choices[0].message.content)
+                except json.JSONDecodeError:
+                    # JSONパースに失敗した場合、テキストから必要な情報を抽出
+                    text_response = response.choices[0].message.content
+                    screen_content = {
+                        "screen_type": "解析中",
+                        "user_action": "解析中",
+                        "content": text_response[:50] if text_response else "解析中"
+                    }
+            except Exception as e:
+                logger.error(f"Vision API error: {str(e)}")
+                if "model_not_found" in str(e):
+                    logger.error("Vision API model not available. Falling back to basic analysis.")
+                    # 基本的な画面解析に基づく推測
+                    brightness = np.mean(gray)
+                    screen_content = {
+                        "screen_type": "解析中（基本）",
+                        "user_action": "行動分析中",
+                        "content": f"輝度:{brightness:.1f}, 動き:{'あり' if motion_detected else 'なし'}"
+                    }
+                else:
+                    screen_content = {
+                        "screen_type": "エラー",
+                        "user_action": "エラー",
+                        "content": "画面解析に失敗しました"
+                    }
+            
             # numpy配列をPythonのネイティブ型に変換
             result = {
                 "frame_size": list(frame.shape[:2]),  # tupleをリストに変換
                 "average_brightness": float(np.mean(gray)),  # numpy.float64をfloatに変換
                 "motion_detected": bool(motion_detected),  # numpyのbool_をboolに変換
                 "dominant_color": dominant_color,
-                "edge_density": edge_density
+                "edge_density": edge_density,
+                "screen_content": screen_content
             }
             
             # 重要な変化がある場合のみログ出力
@@ -153,14 +222,29 @@ class ScreenAnalyzer:
                      G:{analysis_result["dominant_color"]["green"]:.1f}, 
                      B:{analysis_result["dominant_color"]["blue"]:.1f}
             - エッジ密度: {analysis_result["edge_density"]:.2f}
+            - 画面の種類: {analysis_result["screen_content"]["screen_type"]}
+            - ユーザーの行動: {analysis_result["screen_content"]["user_action"]}
+            - 画面の内容: {analysis_result["screen_content"]["content"]}
             
-            これらの特徴から、以下の状況に応じたコメントを生成してください：
-            1. 動きが多い場合は活発な反応
-            2. 暗い場面では心配や励まし
-            3. 明るい色が多い場合は明るい反応
-            4. エッジが多い場合は詳細への注目
+            以下のルールに従って、配信のコメントを生成してください：
             
-            コメントは5文字以下で、絵文字を1つ含めてください。
+            1. 画面の種類に応じたコメント：
+               - エディタの場合：コーディングに関する励まし
+               - ブラウザの場合：閲覧内容への興味や共感
+               - ターミナルの場合：コマンドへの反応
+               - その他：状況に応じた反応
+            
+            2. ユーザーの行動に応じた反応：
+               - コーディング中：「すごい」「ナイス」など
+               - 閲覧中：「なるほど」「へぇ」など
+               - コマンド実行中：「おお」「よし」など
+            
+            3. 動きや明るさの変化への反応：
+               - 動きが多い：活発な反応
+               - 暗い画面：励ましや心配
+               - 明るい画面：ポジティブな反応
+            
+            コメントは3-5文字で、絵文字を1つ含めてください。
             前回までのコメント: {', '.join(self.comment_history[-3:] if self.comment_history else [])}
             """
             

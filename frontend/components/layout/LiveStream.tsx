@@ -15,6 +15,11 @@ export default function LiveStream() {
     comment: string;
     dominant_color: { red: number; green: number; blue: number };
     edge_density: number;
+    screen_content: {
+      screen_type: string;
+      user_action: string;
+      content: string;
+    };
   } | null>(null);
   const wsManager = WebSocketManager.getInstance();
 
@@ -159,6 +164,12 @@ export default function LiveStream() {
               />
             </div>
             <p>エッジ密度: {(analysisResult.edge_density * 100).toFixed(1)}%</p>
+            <div className="mt-4 border-t border-gray-600 pt-2">
+              <p className="font-medium mb-1">画面の内容:</p>
+              <p>種類: {analysisResult.screen_content.screen_type}</p>
+              <p>行動: {analysisResult.screen_content.user_action}</p>
+              <p>内容: {analysisResult.screen_content.content}</p>
+            </div>
             <p className="text-yellow-400 font-medium">AI: {analysisResult.comment}</p>
           </div>
         </div>
