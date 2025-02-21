@@ -48,7 +48,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.info(f"Received binary data of size: {len(data)} bytes")
                     
                     # データの先頭バイトをチェックしてタイプを判別
-                    if data[:4].startswith(b"\x1a\x45\xdf\xa3"):  # WebM format
+                    if "type" in message and message["type"] == "camera_frame":
+                        # カメラ映像の解析
+                        result = await camera_analyzer.analyze_frame(data)
+                        await websocket.send_json({
+                            "type": "camera_analysis",
+                            "data": result
+                        })
+                    elif data[:4].startswith(b"\x1a\x45\xdf\xa3"):  # WebM format
                         # 音声処理
                         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_file:
                             temp_file.write(data)

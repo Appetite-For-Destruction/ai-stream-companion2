@@ -19,13 +19,16 @@ export default function LiveStream() {
 
   const startCameraStream = async () => {
     if (mediaStream) {
-      mediaStream.getTracks().forEach(track => track.stop()); // 既存のストリームを停止
+      mediaStream.getTracks().forEach(track => track.stop());
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       setMediaStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // カメラキャプチャの定期送信を開始
+        const cleanup = startCameraCapture(stream);
+        setScreenCaptureCleanup(() => cleanup);
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
@@ -82,6 +85,38 @@ export default function LiveStream() {
         }, 'image/png', 0.8);  // 品質を80%に設定
       }
     }, 2000); // 2秒ごとにキャプチャ
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  };
+
+  const startCameraCapture = (stream: MediaStream) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const video = videoRef.current;
+    let intervalId: NodeJS.Timeout;
+
+    intervalId = setInterval(() => {
+      if (video && ctx) {
+        // キャプチャサイズを制限して転送データを削減
+        const maxWidth = 640;  // カメラ映像は小さめに
+        const scale = Math.min(1, maxWidth / video.videoWidth);
+        canvas.width = video.videoWidth * scale;
+        canvas.height = video.videoHeight * scale;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            wsManager.sendMessage(JSON.stringify({
+              type: 'camera_frame',
+              data: blob
+            }));
+          }
+        }, 'image/jpeg', 0.7);  // JPEGで品質70%
+      }
+    }, 3000); // 3秒ごとにキャプチャ
 
     return () => {
       if (intervalId) {
