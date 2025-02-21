@@ -13,6 +13,8 @@ export default function LiveStream() {
     average_brightness: number;
     motion_detected: boolean;
     comment: string;
+    dominant_color: { red: number; green: number; blue: number };
+    edge_density: number;
   } | null>(null);
   const wsManager = WebSocketManager.getInstance();
 
@@ -143,6 +145,20 @@ export default function LiveStream() {
             <p>解像度: {analysisResult.frame_size.join(' x ')}</p>
             <p>平均輝度: {analysisResult.average_brightness.toFixed(2)}</p>
             <p>動き検出: {analysisResult.motion_detected ? 'あり' : 'なし'}</p>
+            <div className="flex items-center gap-2">
+              <span>主要色:</span>
+              <div 
+                className="w-6 h-6 rounded"
+                style={{
+                  backgroundColor: `rgb(
+                    ${analysisResult.dominant_color.red},
+                    ${analysisResult.dominant_color.green},
+                    ${analysisResult.dominant_color.blue}
+                  )`
+                }}
+              />
+            </div>
+            <p>エッジ密度: {(analysisResult.edge_density * 100).toFixed(1)}%</p>
             <p className="text-yellow-400 font-medium">AI: {analysisResult.comment}</p>
           </div>
         </div>
