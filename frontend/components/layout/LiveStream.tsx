@@ -8,6 +8,11 @@ export default function LiveStream() {
   const [streamType, setStreamType] = useState<'camera' | 'screen' | 'none'>('none');
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [subscribers, setSubscribers] = useState<number>(0);
+  const [analysisResult, setAnalysisResult] = useState<{
+    frame_size: number[];
+    average_brightness: number;
+    motion_detected: boolean;
+  } | null>(null);
   const wsManager = WebSocketManager.getInstance();
 
   const startCameraStream = async () => {
@@ -97,6 +102,17 @@ export default function LiveStream() {
     setSubscribers(randomSubscribers);
   }, []);
 
+  useEffect(() => {
+    const handleMessage = (data: any) => {
+      if (data.type === 'screen_analysis') {
+        setAnalysisResult(data.data);
+      }
+    };
+    
+    wsManager.addMessageHandler(handleMessage);
+    return () => wsManager.removeMessageHandler(handleMessage);
+  }, []);
+
   return (
     <div>
       <div className="aspect-video bg-gray-800 rounded-lg mb-4 relative">
@@ -115,6 +131,17 @@ export default function LiveStream() {
           <AudioRecorder />
         </div>
       </div>
+
+      {streamType === 'screen' && analysisResult && (
+        <div className="bg-gray-700 rounded-lg p-4 mb-4">
+          <h2 className="text-lg font-semibold mb-2">画面解析結果</h2>
+          <div className="space-y-2 text-sm">
+            <p>解像度: {analysisResult.frame_size.join(' x ')}</p>
+            <p>平均輝度: {analysisResult.average_brightness.toFixed(2)}</p>
+            <p>動き検出: {analysisResult.motion_detected ? 'あり' : 'なし'}</p>
+          </div>
+        </div>
+      )}
 
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">🔴 Live: AI Stream Session</h1>
