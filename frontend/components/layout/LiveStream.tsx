@@ -1,12 +1,14 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
 import AudioRecorder from '../AudioRecorder';
+import WebSocketManager from '@/lib/websocket';
 
 export default function LiveStream() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streamType, setStreamType] = useState<'camera' | 'screen' | 'none'>('none');
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [subscribers, setSubscribers] = useState<number>(0);
+  const wsManager = WebSocketManager.getInstance();
 
   const startCameraStream = async () => {
     if (mediaStream) {
@@ -44,8 +46,9 @@ export default function LiveStream() {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const video = videoRef.current;
+    let intervalId: NodeJS.Timeout;
 
-    const captureInterval = setInterval(() => {
+    intervalId = setInterval(() => {
       if (video && ctx) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -58,7 +61,11 @@ export default function LiveStream() {
       }
     }, 1000); // 1秒ごとにキャプチャ
 
-    return () => clearInterval(captureInterval);
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   };
 
   const stopStreams = () => {
