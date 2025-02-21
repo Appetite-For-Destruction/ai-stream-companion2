@@ -70,24 +70,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     elif data[:4].startswith(b"\x89PNG"):  # PNG format
                         # 画面キャプチャ処理
                         result = await screen_analyzer.analyze_frame(data)
-                        if "error" not in result:
-                            # 解析結果に基づいてコメントを生成
-                            comment = await screen_analyzer.generate_comment(result)
-                            await websocket.send_json({
-                                "type": "screen_analysis",
-                                "data": {
-                                    **result,
-                                    "comment": comment
-                                }
-                            })
-                        else:
+                        if not result["success"]:
                             logger.error(f"Screen analysis error: {result['error']}")
                             await websocket.send_json({
                                 "type": "error",
-                                "error": {
-                                    "type": "analysis_error",
-                                    "message": "画面解析中にエラーが発生しました"
-                                }
+                                "error": result["error"]
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "message",
+                                "text": result['text']
                             })
                 elif "text" in message:
                     logger.info(f"Received text message: {message['text']}")

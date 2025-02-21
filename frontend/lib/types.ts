@@ -1,9 +1,17 @@
 export type WebSocketMessage = {
-    type: 'message' | 'error';
+    type: 'message' | 'error' | 'screen_analysis';
     text?: string;
     error?: {
         type: string;
         message: string;
+    };
+    data?: {
+        success: boolean;
+        text: string;
+        error: {
+            type: string;
+            message: string;
+        } | null;
     };
 };
 

@@ -9,17 +9,10 @@ export default function LiveStream() {
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [subscribers, setSubscribers] = useState<number>(0);
   const [analysisResult, setAnalysisResult] = useState<{
-    frame_size: number[];
-    average_brightness: number;
-    motion_detected: boolean;
-    comment: string;
-    dominant_color: { red: number; green: number; blue: number };
-    edge_density: number;
-    screen_content: {
-      screen_type: string;
-      user_action: string;
-      content: string;
-    };
+    type: string;
+    text: string;
+    success: boolean;
+    error?: { message: string };
   } | null>(null);
   const wsManager = WebSocketManager.getInstance();
 
@@ -146,31 +139,13 @@ export default function LiveStream() {
       {streamType === 'screen' && analysisResult && (
         <div className="bg-gray-700 rounded-lg p-4 mb-4">
           <h2 className="text-lg font-semibold mb-2">画面解析結果</h2>
-          <div className="space-y-2 text-sm">
-            <p>解像度: {analysisResult.frame_size.join(' x ')}</p>
-            <p>平均輝度: {analysisResult.average_brightness.toFixed(2)}</p>
-            <p>動き検出: {analysisResult.motion_detected ? 'あり' : 'なし'}</p>
-            <div className="flex items-center gap-2">
-              <span>主要色:</span>
-              <div 
-                className="w-6 h-6 rounded"
-                style={{
-                  backgroundColor: `rgb(
-                    ${analysisResult.dominant_color.red},
-                    ${analysisResult.dominant_color.green},
-                    ${analysisResult.dominant_color.blue}
-                  )`
-                }}
-              />
-            </div>
-            <p>エッジ密度: {(analysisResult.edge_density * 100).toFixed(1)}%</p>
-            <div className="mt-4 border-t border-gray-600 pt-2">
-              <p className="font-medium mb-1">画面の内容:</p>
-              <p>種類: {analysisResult.screen_content.screen_type}</p>
-              <p>行動: {analysisResult.screen_content.user_action}</p>
-              <p>内容: {analysisResult.screen_content.content}</p>
-            </div>
-            <p className="text-yellow-400 font-medium">AI: {analysisResult.comment}</p>
+          <div className="space-y-2 text-sm text-gray-300">
+            <p>ステータス: {analysisResult.success ? '成功' : 'エラー'}</p>
+            {analysisResult.error && (
+              <p className="text-red-400">
+                エラー: {analysisResult.error.message}
+              </p>
+            )}
           </div>
         </div>
       )}
