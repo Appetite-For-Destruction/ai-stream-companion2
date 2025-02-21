@@ -1,11 +1,13 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from .services.audio_service import AudioService
+from .services.screen_analyzer import ScreenAnalyzer
 import tempfile
 import logging
 
 app = FastAPI()
 audio_service = AudioService()
+screen_analyzer = ScreenAnalyzer()
 logger = logging.getLogger(__name__)
 
 app.add_middleware(
