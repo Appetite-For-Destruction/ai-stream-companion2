@@ -34,11 +34,14 @@ class ScreenAnalyzer:
             self.previous_frame = gray
             
             # numpy配列をPythonのネイティブ型に変換
-            return {
-                "frame_size": frame.shape[:2].tolist(),  # numpy配列をリストに変換
+            result = {
+                "frame_size": list(frame.shape[:2]),  # tupleをリストに変換
                 "average_brightness": float(np.mean(gray)),  # numpy.float64をfloatに変換
                 "motion_detected": bool(motion_detected)  # numpyのbool_をboolに変換
             }
+            
+            logger.info(f"Frame analysis result: {result}")
+            return result
             
         except Exception as e:
             logger.error(f"Frame analysis error: {str(e)}")

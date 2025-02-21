@@ -55,16 +55,19 @@ export default function LiveStream() {
 
     intervalId = setInterval(() => {
       if (video && ctx) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
+        // キャプチャサイズを制限して転送データを削減
+        const maxWidth = 1280;
+        const scale = Math.min(1, maxWidth / video.videoWidth);
+        canvas.width = video.videoWidth * scale;
+        canvas.height = video.videoHeight * scale;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         canvas.toBlob((blob) => {
           if (blob) {
             wsManager.sendMessage(blob);
           }
-        }, 'image/png');
+        }, 'image/png', 0.8);  // 品質を80%に設定
       }
-    }, 1000); // 1秒ごとにキャプチャ
+    }, 2000); // 2秒ごとにキャプチャ
 
     return () => {
       if (intervalId) {
