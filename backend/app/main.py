@@ -40,26 +40,35 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            data = await websocket.receive_bytes()
+            message = await websocket.receive()
             
-            with tempfile.NamedTemporaryFile(suffix=".webm") as temp_file:
-                temp_file.write(data)
-                temp_file.seek(0)
+            # メッセージタイプに応じて処理を分岐
+            if "bytes" in message:
+                data = message["bytes"]
+                logger.info(f"Received binary data of size: {len(data)} bytes")
                 
-                # 音声認識とレスポンス生成
-                result = await audio_service.transcribe_audio(temp_file)
-                
-                if result["success"]:
-                    await websocket.send_json({
-                        "type": "message",
-                        "text": result["text"]
-                    })
-                else:
-                    logger.error(f"Processing error: {result['error']}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": result["error"]
-                    })
+                # 音声処理（WebMフォーマットチェックは一時的に無効化）
+                with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_file:
+                    temp_file.write(data)
+                    temp_file.seek(0)
+                    
+                    result = await audio_service.transcribe_audio(temp_file)
+                    
+                    if result["success"]:
+                        await websocket.send_json({
+                            "type": "message",
+                            "text": result["text"]
+                        })
+                    else:
+                        logger.error(f"Processing error: {result['error']}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "error": result["error"]
+                        })
+            elif "text" in message:
+                logger.info(f"Received text message: {message['text']}")
+            else:
+                logger.error(f"Unexpected message format: {message}")
 
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
