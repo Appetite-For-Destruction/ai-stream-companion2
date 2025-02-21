@@ -12,6 +12,7 @@ export default function LiveStream() {
     frame_size: number[];
     average_brightness: number;
     motion_detected: boolean;
+    comment: string;
   } | null>(null);
   const wsManager = WebSocketManager.getInstance();
 
@@ -142,6 +143,7 @@ export default function LiveStream() {
             <p>解像度: {analysisResult.frame_size.join(' x ')}</p>
             <p>平均輝度: {analysisResult.average_brightness.toFixed(2)}</p>
             <p>動き検出: {analysisResult.motion_detected ? 'あり' : 'なし'}</p>
+            <p className="text-yellow-400 font-medium">AI: {analysisResult.comment}</p>
           </div>
         </div>
       )}

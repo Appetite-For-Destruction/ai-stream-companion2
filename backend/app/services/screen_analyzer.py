@@ -2,12 +2,14 @@ import cv2
 import numpy as np
 from typing import Dict, Any
 import logging
+import openai
 
 logger = logging.getLogger(__name__)
 
 class ScreenAnalyzer:
     def __init__(self):
         self.previous_frame = None
+        self.comment_history = []
         
     async def analyze_frame(self, frame_data: bytes) -> Dict[str, Any]:
         try:
@@ -45,4 +47,39 @@ class ScreenAnalyzer:
             
         except Exception as e:
             logger.error(f"Frame analysis error: {str(e)}")
-            return {"error": str(e)} 
+            return {"error": str(e)}
+
+    async def generate_comment(self, analysis_result: Dict[str, Any]) -> str:
+        try:
+            client = openai.AsyncOpenAI()
+            brightness = analysis_result["average_brightness"]
+            has_motion = analysis_result["motion_detected"]
+            
+            prompt = f"""
+            画面の特徴:
+            - 明るさ: {brightness}/255
+            - 動きの有無: {'あり' if has_motion else 'なし'}
+            
+            これらの特徴から、5文字以下の短いコメントを生成してください。
+            前回までのコメント: {', '.join(self.comment_history[-3:] if self.comment_history else [])}
+            """
+            
+            response = await client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "あなたは配信のコメント生成AIです。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=50
+            )
+            
+            comment = response.choices[0].message.content.strip()
+            self.comment_history.append(comment)
+            if len(self.comment_history) > 10:
+                self.comment_history = self.comment_history[-10:]
+                
+            return comment
+            
+        except Exception as e:
+            logger.error(f"Comment generation error: {str(e)}")
+            return "..." 
