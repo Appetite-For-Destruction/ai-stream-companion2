@@ -3,6 +3,7 @@ import numpy as np
 from typing import Dict, Any
 import logging
 import openai
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -10,21 +11,62 @@ class ScreenAnalyzer:
     def __init__(self):
         self.previous_frame = None
         self.comment_history = []
+        self.max_history_size = 10
+        self.cleanup_counter = 0
+        
+    async def cleanup_old_data(self):
+        self.cleanup_counter += 1
+        if self.cleanup_counter > 100:  # 100フレームごとにクリーンアップ
+            self.comment_history = self.comment_history[-self.max_history_size:]
+            if self.previous_frame is not None:
+                self.previous_frame = cv2.resize(self.previous_frame, (320, 180))  # より小さいサイズに
+            self.cleanup_counter = 0
         
     async def analyze_frame(self, frame_data: bytes) -> Dict[str, Any]:
         try:
+            # 定期的なクリーンアップを実行
+            await self.cleanup_old_data()
+            
+            # キャッシュ用の変数
+            self.last_analysis_time = getattr(self, 'last_analysis_time', 0)
+            current_time = time.time()
+            
+            # 最小間隔（秒）を設定
+            MIN_ANALYSIS_INTERVAL = 1.0
+            
+            if current_time - self.last_analysis_time < MIN_ANALYSIS_INTERVAL:
+                return self.last_result if hasattr(self, 'last_result') else {"error": "Too frequent"}
+            
             # バイナリデータをnumpy配列（画像）に変換
             nparr = np.frombuffer(frame_data, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             
             if frame is None:
-                return {"error": "Invalid frame data"}
+                return {
+                    "error": "Invalid frame data",
+                    "details": "画像データの読み込みに失敗しました。",
+                    "code": "INVALID_FRAME"
+                }
             
-            # 画像を縮小して処理を軽くする
-            frame = cv2.resize(frame, (640, 360))
+            if frame.size == 0:
+                return {
+                    "error": "Empty frame",
+                    "details": "空の画像フレームを受信しました。",
+                    "code": "EMPTY_FRAME"
+                }
+            
+            # 画像サイズが大きすぎる場合の処理
+            MAX_DIMENSION = 1280
+            height, width = frame.shape[:2]
+            if width > MAX_DIMENSION or height > MAX_DIMENSION:
+                scale = MAX_DIMENSION / max(width, height)
+                frame = cv2.resize(frame, None, fx=scale, fy=scale)
+            
+            # 処理用に小さいサイズにリサイズ
+            process_frame = cv2.resize(frame, (320, 180))
             
             # グレースケール変換
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(process_frame, cv2.COLOR_BGR2GRAY)
             
             # 動き検出（前フレームとの差分）
             if self.previous_frame is not None:
@@ -57,6 +99,9 @@ class ScreenAnalyzer:
             }
             
             logger.info(f"Frame analysis result: {result}")
+            
+            self.last_result = result
+            self.last_analysis_time = current_time
             return result
             
         except Exception as e:
@@ -65,6 +110,16 @@ class ScreenAnalyzer:
 
     async def generate_comment(self, analysis_result: Dict[str, Any]) -> str:
         try:
+            # コメント生成の間隔制御
+            self.last_comment_time = getattr(self, 'last_comment_time', 0)
+            current_time = time.time()
+            
+            # 最小間隔（秒）を設定
+            MIN_COMMENT_INTERVAL = 3.0
+            
+            if current_time - self.last_comment_time < MIN_COMMENT_INTERVAL:
+                return self.last_comment if hasattr(self, 'last_comment') else "..."
+            
             client = openai.AsyncOpenAI()
             brightness = analysis_result["average_brightness"]
             has_motion = analysis_result["motion_detected"]
@@ -98,6 +153,8 @@ class ScreenAnalyzer:
             )
             
             comment = response.choices[0].message.content.strip()
+            self.last_comment = comment
+            self.last_comment_time = current_time
             self.comment_history.append(comment)
             if len(self.comment_history) > 10:
                 self.comment_history = self.comment_history[-10:]
