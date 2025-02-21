@@ -40,43 +40,78 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            message = await websocket.receive()
-            
-            # メッセージタイプに応じて処理を分岐
-            if "bytes" in message:
-                data = message["bytes"]
-                logger.info(f"Received binary data of size: {len(data)} bytes")
+            try:
+                message = await websocket.receive()
                 
-                # 音声処理（WebMフォーマットチェックは一時的に無効化）
-                with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_file:
-                    temp_file.write(data)
-                    temp_file.seek(0)
+                if "bytes" in message:
+                    data = message["bytes"]
+                    logger.info(f"Received binary data of size: {len(data)} bytes")
                     
-                    result = await audio_service.transcribe_audio(temp_file)
-                    
-                    if result["success"]:
-                        await websocket.send_json({
-                            "type": "message",
-                            "text": result["text"]
-                        })
+                    # データの先頭バイトをチェックしてタイプを判別
+                    if data[:4].startswith(b"\x1a\x45\xdf\xa3"):  # WebM format
+                        # 音声処理
+                        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_file:
+                            temp_file.write(data)
+                            temp_file.seek(0)
+                            
+                            result = await audio_service.transcribe_audio(temp_file)
+                            
+                            if result["success"]:
+                                await websocket.send_json({
+                                    "type": "message",
+                                    "text": result["text"]
+                                })
+                            else:
+                                logger.error(f"Processing error: {result['error']}")
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "error": result["error"]
+                                })
+                    elif data[:4].startswith(b"\x89PNG"):  # PNG format
+                        # 画面キャプチャ処理
+                        result = await screen_analyzer.analyze_frame(data)
+                        if "error" not in result:
+                            await websocket.send_json({
+                                "type": "screen_analysis",
+                                "data": result
+                            })
+                        else:
+                            logger.error(f"Screen analysis error: {result['error']}")
+                            await websocket.send_json({
+                                "type": "error",
+                                "error": {
+                                    "type": "analysis_error",
+                                    "message": "画面解析中にエラーが発生しました"
+                                }
+                            })
+                elif "text" in message:
+                    logger.info(f"Received text message: {message['text']}")
+                else:
+                    if message.get("type") == "websocket.disconnect":
+                        logger.info("Client initiated disconnect")
+                        break
                     else:
-                        logger.error(f"Processing error: {result['error']}")
-                        await websocket.send_json({
-                            "type": "error",
-                            "error": result["error"]
-                        })
-            elif "text" in message:
-                logger.info(f"Received text message: {message['text']}")
-            else:
-                logger.error(f"Unexpected message format: {message}")
+                        logger.warning(f"Unexpected message format: {message}")
+                        continue
 
-    except WebSocketDisconnect:
-        await manager.disconnect(websocket)
-        logger.info("Client disconnected")
+            except WebSocketDisconnect:
+                logger.info("Client disconnected")
+                break
+            except Exception as e:
+                logger.error(f"Error processing message: {str(e)}")
+                await websocket.send_json({
+                    "type": "error",
+                    "error": {"type": "processing_error", "message": "メッセージの処理中にエラーが発生しました"}
+                })
+                continue
+
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
-        await websocket.send_json({
-            "type": "error",
-            "error": {"type": "system_error", "message": "サーバーエラーが発生しました"}
-        })
-        await manager.disconnect(websocket) 
+    finally:
+        logger.info("Cleaning up websocket connection")
+        await manager.disconnect(websocket)
+        if not websocket.client_state.disconnected:
+            try:
+                await websocket.close(code=1000)
+            except Exception as e:
+                logger.error(f"Error during websocket cleanup: {str(e)}") 

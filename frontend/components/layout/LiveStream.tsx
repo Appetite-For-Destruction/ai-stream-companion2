@@ -32,10 +32,33 @@ export default function LiveStream() {
       setMediaStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // 画面キャプチャの定期送信を開始
+        startScreenCapture(stream);
       }
     } catch (error) {
       console.error('Error accessing screen:', error);
     }
+  };
+
+  const startScreenCapture = (stream: MediaStream) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const video = videoRef.current;
+
+    const captureInterval = setInterval(() => {
+      if (video && ctx) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            wsManager.sendMessage(blob);
+          }
+        }, 'image/png');
+      }
+    }, 1000); // 1秒ごとにキャプチャ
+
+    return () => clearInterval(captureInterval);
   };
 
   const stopStreams = () => {
