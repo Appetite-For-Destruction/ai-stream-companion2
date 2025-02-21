@@ -19,13 +19,16 @@ export default function LiveStream() {
 
   const startCameraStream = async () => {
     if (mediaStream) {
-      mediaStream.getTracks().forEach(track => track.stop()); // 既存のストリームを停止
+      mediaStream.getTracks().forEach(track => track.stop());
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       setMediaStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // カメラキャプチャの定期送信を開始
+        const cleanup = startCameraCapture(stream);
+        setScreenCaptureCleanup(() => cleanup);
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
@@ -90,6 +93,35 @@ export default function LiveStream() {
     };
   };
 
+  const startCameraCapture = (stream: MediaStream) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const video = videoRef.current;
+    let intervalId: NodeJS.Timeout;
+
+    intervalId = setInterval(() => {
+      if (video && ctx) {
+        // キャプチャサイズを制限して転送データを削減
+        const maxWidth = 640;  // カメラ映像は小さめに
+        const scale = Math.min(1, maxWidth / video.videoWidth);
+        canvas.width = video.videoWidth * scale;
+        canvas.height = video.videoHeight * scale;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            wsManager.sendMessage(blob);
+          }
+        }, 'image/jpeg', 0.7);  // JPEGで品質70%
+      }
+    }, 3000); // 3秒ごとにキャプチャ
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  };
+
   const stopStreams = () => {
     if (mediaStream) {
       mediaStream.getTracks().forEach(track => track.stop()); // すべてのトラックを停止
@@ -116,8 +148,8 @@ export default function LiveStream() {
 
   useEffect(() => {
     const handleMessage = (data: any) => {
-      // 画面解析結果の処理
-      if (data.type === 'screen_analysis') {
+      // 画面解析とカメラ解析の結果を処理
+      if (data.type === 'screen_analysis' || data.type === 'camera_analysis') {
         setAnalysisResult(data.data);
       }
     };
@@ -156,9 +188,11 @@ export default function LiveStream() {
         </div>
       </div>
 
-      {streamType === 'screen' && analysisResult && (
+      {(streamType === 'screen' || streamType === 'camera') && analysisResult && (
         <div className="bg-gray-700 rounded-lg p-4 mb-4">
-          <h2 className="text-lg font-semibold mb-2">画面解析結果</h2>
+          <h2 className="text-lg font-semibold mb-2">
+            {streamType === 'screen' ? '画面解析結果' : 'カメラ解析結果'}
+          </h2>
           <div className="space-y-2 text-sm text-gray-300">
             <p>ステータス: {analysisResult.success ? '成功' : 'エラー'}</p>
             {analysisResult.error && (
