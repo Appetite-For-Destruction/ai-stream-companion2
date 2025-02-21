@@ -109,10 +109,7 @@ export default function LiveStream() {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         canvas.toBlob((blob) => {
           if (blob) {
-            wsManager.sendMessage(JSON.stringify({
-              type: 'camera_frame',
-              data: blob
-            }));
+            wsManager.sendMessage(blob);
           }
         }, 'image/jpeg', 0.7);  // JPEGで品質70%
       }
@@ -151,8 +148,8 @@ export default function LiveStream() {
 
   useEffect(() => {
     const handleMessage = (data: any) => {
-      // 画面解析結果の処理
-      if (data.type === 'screen_analysis') {
+      // 画面解析とカメラ解析の結果を処理
+      if (data.type === 'screen_analysis' || data.type === 'camera_analysis') {
         setAnalysisResult(data.data);
       }
     };
@@ -191,9 +188,11 @@ export default function LiveStream() {
         </div>
       </div>
 
-      {streamType === 'screen' && analysisResult && (
+      {(streamType === 'screen' || streamType === 'camera') && analysisResult && (
         <div className="bg-gray-700 rounded-lg p-4 mb-4">
-          <h2 className="text-lg font-semibold mb-2">画面解析結果</h2>
+          <h2 className="text-lg font-semibold mb-2">
+            {streamType === 'screen' ? '画面解析結果' : 'カメラ解析結果'}
+          </h2>
           <div className="space-y-2 text-sm text-gray-300">
             <p>ステータス: {analysisResult.success ? '成功' : 'エラー'}</p>
             {analysisResult.error && (

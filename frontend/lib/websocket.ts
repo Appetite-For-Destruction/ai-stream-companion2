@@ -62,7 +62,7 @@ export default class WebSocketManager {
             console.log('WebSocket parsed message:', data);
 
             // メッセージの種類に応じた処理
-            if (data.type === 'message' || data.type === 'screen_analysis') {
+            if (data.type === 'message') {
                 this.chatStore.addMessage(data.text);
             }
 

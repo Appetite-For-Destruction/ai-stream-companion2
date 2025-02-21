@@ -2,12 +2,14 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from .services.audio_service import AudioService
 from .services.screen_analyzer import ScreenAnalyzer
+from .services.camera_analyzer import CameraAnalyzer
 import tempfile
 import logging
 
 app = FastAPI()
 audio_service = AudioService()
 screen_analyzer = ScreenAnalyzer()
+camera_analyzer = CameraAnalyzer()
 logger = logging.getLogger(__name__)
 
 app.add_middleware(
@@ -48,13 +50,19 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.info(f"Received binary data of size: {len(data)} bytes")
                     
                     # データの先頭バイトをチェックしてタイプを判別
-                    if "type" in message and message["type"] == "camera_frame":
+                    if data[:3].startswith(b"\xff\xd8\xff"):  # JPEG format
                         # カメラ映像の解析
                         result = await camera_analyzer.analyze_frame(data)
-                        await websocket.send_json({
-                            "type": "camera_analysis",
-                            "data": result
-                        })
+                        if result["success"]:
+                            await websocket.send_json({
+                                "type": "message",
+                                "text": result["text"]
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "error",
+                                "error": result["error"]
+                            })
                     elif data[:4].startswith(b"\x1a\x45\xdf\xa3"):  # WebM format
                         # 音声処理
                         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_file:
