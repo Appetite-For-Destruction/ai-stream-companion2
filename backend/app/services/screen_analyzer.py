@@ -37,6 +37,13 @@ class ScreenAnalyzer:
             if current_time - self.last_analysis_time < MIN_ANALYSIS_INTERVAL:
                 return self.last_result if hasattr(self, 'last_result') else {"error": "Too frequent"}
             
+            # 前回の結果との差分が小さい場合はキャッシュを返す
+            if hasattr(self, 'last_result') and not isinstance(self.last_result, dict):
+                current_brightness = np.mean(gray)
+                prev_brightness = self.last_result.get('average_brightness', 0)
+                if abs(current_brightness - prev_brightness) < 5.0:  # 輝度変化が小さい
+                    return self.last_result
+            
             # バイナリデータをnumpy配列（画像）に変換
             nparr = np.frombuffer(frame_data, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -53,6 +60,14 @@ class ScreenAnalyzer:
                     "error": "Empty frame",
                     "details": "空の画像フレームを受信しました。",
                     "code": "EMPTY_FRAME"
+                }
+            
+            # 黒画面検出（全ての値が0の場合）
+            if np.mean(frame) < 1.0:
+                return {
+                    "error": "Black screen",
+                    "details": "画面が真っ黒です",
+                    "code": "BLACK_SCREEN"
                 }
             
             # 画像サイズが大きすぎる場合の処理
@@ -98,7 +113,13 @@ class ScreenAnalyzer:
                 "edge_density": edge_density
             }
             
-            logger.info(f"Frame analysis result: {result}")
+            # 重要な変化がある場合のみログ出力
+            if not hasattr(self, 'last_result') or \
+               abs(result['average_brightness'] - self.last_result.get('average_brightness', 0)) > 5.0 or \
+               result['motion_detected'] != self.last_result.get('motion_detected', False):
+                logger.info(f"Significant change detected: {result}")
+            else:
+                logger.debug(f"Frame analyzed: {result['frame_size']}")
             
             self.last_result = result
             self.last_analysis_time = current_time
