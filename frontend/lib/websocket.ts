@@ -54,22 +54,38 @@ export default class WebSocketManager {
             this.ws = null;
         }
     }
-
     private handleMessage = (event: MessageEvent) => {
         try {
             console.log('WebSocket raw message:', event.data);
-            const data = JSON.parse(event.data);
-            console.log('WebSocket parsed message:', data);
-
-            // メッセージの種類に応じた処理
-            if (data.type === 'message') {
-                this.chatStore.addMessage(data.text);
+    
+            if (typeof event.data === 'string') {
+                // 受信データがJSON文字列であるかを判定
+                if (event.data.startsWith('{') || event.data.startsWith('[')) {
+                    const data = JSON.parse(event.data);
+                    console.log('WebSocket parsed message:', data);
+    
+                    if (data.type === 'message') {
+                        // コメントを追加
+                        this.chatStore.addMessage(data.text);
+                        console.log('Comment added:', data.text); // 追加されたコメントをログに表示
+                    } else if (data.type === 'error') {
+                        console.error('Error received:', data.error);
+                    }
+    
+                    // 他のハンドラーにも通知
+                    this.messageHandlers.forEach(handler => handler(data));
+                } else if (event.data === 'ping') {
+                    console.log('Received ping message, responding with pong.');
+                    this.sendMessage('pong');
+                } else {
+                    console.warn('Received non-JSON message, ignoring:', event.data);
+                }
+            } else {
+                console.warn('Received non-string message, ignoring:', event.data);
             }
-
-            // 他のハンドラーにも通知
-            this.messageHandlers.forEach(handler => handler(data));
         } catch (error) {
             console.error('Error handling message:', error);
         }
     }
+    
 } 

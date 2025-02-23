@@ -142,9 +142,14 @@ class AudioService:
             client = openai.AsyncOpenAI()  # AsyncOpenAIクライアントを使用
             response = await client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "あなたは面白いコメントを生成するAIです。コメントは5文字以下の短めがほとんどで、長めのコメントはごくわずかです。コメントのほとんどは日本語で、時々英語が含まれることがあります。"},
-                    {"role": "user", "content": f"以下の音声に対してコメントしてください：{text}"}
+                messages=[                    {"role": "system", "content": 
+                     "あなたは音声に対してリアクションを返すAIです。\
+                        コメントは自然な日本語で、5文字以下の短文が8割以上ですが、長めのコメントもごくたまに含まれます。\
+                        反応のバリエーションを増やし、面白い・共感・驚き・ツッコミなど多様なトーンを持たせてください。\
+                        カジュアルな表現やスラングがほとんどです。面白いと思ったらwwwや草などの表現を入れて。\
+                        句点を付けたコメントは、コメントとして違和感があるのでしないでください。絵文字もたまに加えるように。"
+                        },
+                        {"role": "user", "content": f"以下の音声に対して自然なコメントをしてください：{text}"}
                 ],
                 max_tokens=100
             )

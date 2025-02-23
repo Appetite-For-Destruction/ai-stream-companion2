@@ -5,12 +5,21 @@ from .services.screen_analyzer import ScreenAnalyzer
 from .services.camera_analyzer import CameraAnalyzer
 import tempfile
 import logging
+import asyncio
 
 app = FastAPI()
 audio_service = AudioService()
 screen_analyzer = ScreenAnalyzer()
 camera_analyzer = CameraAnalyzer()
 logger = logging.getLogger(__name__)
+
+
+async def lifespan(app: FastAPI):
+    logger.info("Application startup")
+    yield
+    logger.info("Application shutdown")
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,16 +44,29 @@ class ConnectionManager:
         for connection in self.active_connections:
             await connection.send_text(message)
 
+    async def ping(self, websocket: WebSocket):
+        while True:
+            try:
+                await websocket.send_text("ping")  # Pingメッセージを送信
+                await asyncio.sleep(30)  # 30秒ごとにPingを送信
+            except Exception as e:
+                logger.error(f"Error while sending ping: {str(e)}")
+                break
+
 manager = ConnectionManager()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
+
+    # Pingメッセージを送信するタスクを開始
+    ping_task = asyncio.create_task(manager.ping(websocket))
+
     try:
         while True:
             try:
                 message = await websocket.receive()
-                
+
                 if "bytes" in message:
                     data = message["bytes"]
                     logger.info(f"Received binary data of size: {len(data)} bytes")
@@ -56,7 +78,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         if result["success"]:
                             await websocket.send_json({
                                 "type": "message",
-                                "text": result["text"]
+                                "text": result["text"]  # ここでコメントを送信
                             })
                         else:
                             await websocket.send_json({
@@ -74,7 +96,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             if result["success"]:
                                 await websocket.send_json({
                                     "type": "message",
-                                    "text": result["text"]
+                                    "text": result["text"]  # ここでもコメントを送信
                                 })
                             else:
                                 logger.error(f"Processing error: {result['error']}")
@@ -94,10 +116,12 @@ async def websocket_endpoint(websocket: WebSocket):
                         else:
                             await websocket.send_json({
                                 "type": "message",
-                                "text": result['text']
+                                "text": result['text']  # コメントを送信
                             })
                 elif "text" in message:
                     logger.info(f"Received text message: {message['text']}")
+                    if message['text'] == 'pong':  # Pongメッセージを受信した場合
+                        logger.info("Received pong response from client")
                 else:
                     if message.get("type") == "websocket.disconnect":
                         logger.info("Client initiated disconnect")
@@ -113,7 +137,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.error(f"Error processing message: {str(e)}")
                 await websocket.send_json({
                     "type": "error",
-                    "error": {"type": "processing_error", "message": "メッセージの処理中にエラーが発生しました"}
+                    #"error": {"type": "processing_error", "message": "メッセージの処理中にエラーが発生しました"}
                 })
                 continue
 
@@ -122,3 +146,4 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         logger.info("Cleaning up websocket connection")
         await manager.disconnect(websocket) 
+        ping_task.cancel()  # Pingタスクをキャンセル
