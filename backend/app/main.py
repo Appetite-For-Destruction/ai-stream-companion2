@@ -13,14 +13,6 @@ screen_analyzer = ScreenAnalyzer()
 camera_analyzer = CameraAnalyzer()
 logger = logging.getLogger(__name__)
 
-
-async def lifespan(app: FastAPI):
-    logger.info("Application startup")
-    yield
-    logger.info("Application shutdown")
-
-app = FastAPI(lifespan=lifespan)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -120,8 +112,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             })
                 elif "text" in message:
                     logger.info(f"Received text message: {message['text']}")
-                    if message['text'] == 'pong':  # Pongメッセージを受信した場合
-                        logger.info("Received pong response from client")
                 else:
                     if message.get("type") == "websocket.disconnect":
                         logger.info("Client initiated disconnect")
